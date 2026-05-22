@@ -231,6 +231,88 @@
     margin: 4px 0;
   }
 
+  /* Alarm modal */
+  .modal-mask {
+    position: fixed; inset: 0;
+    background: rgba(0,0,0,0.5);
+    display: none;
+    align-items: center; justify-content: center;
+    z-index: 100; padding: 16px;
+  }
+  .modal-mask.show { display: flex; }
+  .modal-box {
+    background: #fff; border-radius: 14px;
+    padding: 22px; max-width: 420px; width: 100%;
+    box-shadow: 0 20px 60px rgba(0,0,0,0.2);
+    animation: pop 0.2s ease;
+  }
+  @keyframes pop {
+    from { opacity: 0; transform: scale(0.95); }
+    to { opacity: 1; transform: scale(1); }
+  }
+  .modal-box h3 {
+    margin: 0 0 8px; font-size: 18px;
+    display: flex; align-items: center; gap: 8px;
+  }
+  .modal-box .hint {
+    color: var(--muted); font-size: 12px;
+    background: var(--mint-soft); padding: 8px 10px;
+    border-radius: 6px; margin: 10px 0;
+    line-height: 1.6;
+  }
+  .alarm-row {
+    display: flex; align-items: center; gap: 8px;
+    padding: 10px 0; border-bottom: 1px solid var(--border);
+  }
+  .alarm-row:last-child { border-bottom: none; }
+  .alarm-row input[type=time] {
+    font: inherit; font-size: 18px; padding: 6px 10px;
+    border: 1px solid var(--border); border-radius: 6px;
+    outline: none; flex: 1;
+  }
+  .alarm-row input[type=text] {
+    font: inherit; font-size: 13px; padding: 6px 10px;
+    border: 1px solid var(--border); border-radius: 6px;
+    outline: none; flex: 2; min-width: 80px;
+  }
+  .alarm-row input:focus { border-color: var(--mint-deep); }
+  .alarm-row .switch {
+    position: relative; width: 38px; height: 22px;
+    background: #d1d5db; border-radius: 999px;
+    cursor: pointer; transition: background 0.2s;
+    flex-shrink: 0;
+  }
+  .alarm-row .switch::after {
+    content: ''; position: absolute; top: 2px; left: 2px;
+    width: 18px; height: 18px; background: #fff;
+    border-radius: 50%; transition: transform 0.2s;
+  }
+  .alarm-row.on .switch { background: var(--mint-deep); }
+  .alarm-row.on .switch::after { transform: translateX(16px); }
+  .alarm-row .row-del { font-size: 18px; }
+  .modal-actions {
+    display: flex; gap: 8px; margin-top: 14px;
+  }
+  .modal-actions button { flex: 1; }
+
+  .global-switch {
+    display: flex; align-items: center; justify-content: space-between;
+    background: #f9fafb; padding: 10px 12px; border-radius: 8px;
+    margin-bottom: 10px;
+  }
+  .global-switch .switch {
+    position: relative; width: 38px; height: 22px;
+    background: #d1d5db; border-radius: 999px;
+    cursor: pointer; transition: background 0.2s;
+  }
+  .global-switch .switch::after {
+    content: ''; position: absolute; top: 2px; left: 2px;
+    width: 18px; height: 18px; background: #fff;
+    border-radius: 50%; transition: transform 0.2s;
+  }
+  .global-switch.on .switch { background: var(--mint-deep); }
+  .global-switch.on .switch::after { transform: translateX(16px); }
+
   /* Mobile */
   @media (max-width: 720px) {
     body { padding: 12px 10px 60px; }
@@ -260,6 +342,7 @@
     <div style="font-size: 13px; color: var(--muted); letter-spacing: 0.1em;">📓 MONTHLY REVIEW</div>
     <div class="topbar-actions">
       <select class="btn" id="monthPicker"></select>
+      <button class="btn" id="alarmBtn">⏰ 提醒</button>
       <button class="btn" id="exportBtn">导出</button>
       <button class="btn" id="importBtn">导入</button>
       <input type="file" id="importFile" accept="application/json" style="display:none" />
@@ -373,6 +456,27 @@
 </div>
 
 <div class="toast" id="toast"></div>
+
+<!-- Alarm modal -->
+<div class="modal-mask" id="alarmModal">
+  <div class="modal-box">
+    <h3>⏰ 打卡提醒</h3>
+    <div class="hint">
+      设定每日提醒时间，到点会响铃 + 弹浏览器通知。<br/>
+      ⚠仅在页面打开时生效（可后台/锁屏）。
+    </div>
+    <div class="global-switch" id="globalSwitch">
+      <span>总开关</span>
+      <div class="switch"></div>
+    </div>
+    <div id="alarmList"></div>
+    <div class="modal-actions">
+      <button class="btn" id="addAlarmBtn">+ 添加提醒</button>
+      <button class="btn" id="testAlarmBtn">⚡ 测试响铃</button>
+      <button class="btn primary" id="closeAlarmBtn">完成</button>
+    </div>
+  </div>
+</div>
 
 <script>
 (function(){
@@ -852,6 +956,140 @@
     renderCharts();
     renderTexts();
   }
+
+  // ---------- alarm ----------
+  const ALARM_KEY = 'monthly_review_alarms';
+  let alarmState = loadAlarms();
+  function loadAlarms() {
+    try {
+      const raw = localStorage.getItem(ALARM_KEY);
+      if (!raw) return { enabled: true, items: [] };
+      return Object.assign({ enabled: true, items: [] }, JSON.parse(raw));
+    } catch { return { enabled: true, items: [] }; }
+  }
+  function saveAlarms() { localStorage.setItem(ALARM_KEY, JSON.stringify(alarmState)); }
+
+  function renderAlarms() {
+    const list = document.getElementById('alarmList');
+    list.innerHTML = '';
+    if (!alarmState.items.length) {
+      list.innerHTML = '<div style="color:#9ca3af;text-align:center;padding:20px;font-size:13px">暂无提醒，点击下方“添加提醒”</div>';
+    } else {
+      alarmState.items.forEach((a, i) => {
+        const row = document.createElement('div');
+        row.className = 'alarm-row' + (a.on ? ' on' : '');
+        row.innerHTML = `
+          <input type="time" value="${a.time}" data-i="${i}" data-f="time"/>
+          <input type="text" value="${esc(a.label||'')}" placeholder="备注" data-i="${i}" data-f="label"/>
+          <div class="switch" data-i="${i}" data-f="toggle"></div>
+          <button class="row-del" data-i="${i}" data-f="del" title="删除">×</button>
+        `;
+        list.appendChild(row);
+      });
+    }
+    // global switch
+    document.getElementById('globalSwitch').classList.toggle('on', alarmState.enabled);
+  }
+
+  document.getElementById('alarmBtn').onclick = () => {
+    document.getElementById('alarmModal').classList.add('show');
+    renderAlarms();
+  };
+  document.getElementById('closeAlarmBtn').onclick = () => {
+    document.getElementById('alarmModal').classList.remove('show');
+  };
+  document.getElementById('alarmModal').addEventListener('click', e => {
+    if (e.target.id === 'alarmModal') e.currentTarget.classList.remove('show');
+  });
+
+  document.getElementById('globalSwitch').onclick = () => {
+    alarmState.enabled = !alarmState.enabled;
+    saveAlarms(); renderAlarms();
+    if (alarmState.enabled) requestNotifPermission();
+  };
+
+  document.getElementById('addAlarmBtn').onclick = () => {
+    if (alarmState.items.length >= 5) { toast('最多 5 个提醒'); return; }
+    alarmState.items.push({ time: '22:00', label: '去打卡～', on: true });
+    saveAlarms(); renderAlarms();
+    requestNotifPermission();
+  };
+
+  document.getElementById('alarmList').addEventListener('input', e => {
+    const i = +e.target.dataset.i; const f = e.target.dataset.f;
+    if (!Number.isInteger(i)) return;
+    if (f === 'time' || f === 'label') {
+      alarmState.items[i][f] = e.target.value;
+      saveAlarms();
+    }
+  });
+  document.getElementById('alarmList').addEventListener('click', e => {
+    const i = +e.target.dataset.i; const f = e.target.dataset.f;
+    if (!Number.isInteger(i)) return;
+    if (f === 'toggle') {
+      alarmState.items[i].on = !alarmState.items[i].on;
+      saveAlarms(); renderAlarms();
+    } else if (f === 'del') {
+      alarmState.items.splice(i, 1);
+      saveAlarms(); renderAlarms();
+    }
+  });
+
+  document.getElementById('testAlarmBtn').onclick = () => {
+    ringBell();
+    showNotif('⏰ 测试提醒', '这是一条测试通知');
+  };
+
+  function requestNotifPermission() {
+    if (!('Notification' in window)) return;
+    if (Notification.permission === 'default') Notification.requestPermission();
+  }
+  function showNotif(title, body) {
+    if (!('Notification' in window)) return;
+    if (Notification.permission === 'granted') {
+      try { new Notification(title, { body, icon: '' }); } catch {}
+    }
+  }
+  // beep via Web Audio
+  let audioCtx = null;
+  function ringBell() {
+    try {
+      if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      const ctx = audioCtx;
+      [0, 0.25, 0.5].forEach(delay => {
+        const o = ctx.createOscillator();
+        const g = ctx.createGain();
+        o.type = 'sine';
+        o.frequency.value = 880;
+        g.gain.setValueAtTime(0, ctx.currentTime + delay);
+        g.gain.linearRampToValueAtTime(0.3, ctx.currentTime + delay + 0.02);
+        g.gain.linearRampToValueAtTime(0, ctx.currentTime + delay + 0.18);
+        o.connect(g); g.connect(ctx.destination);
+        o.start(ctx.currentTime + delay);
+        o.stop(ctx.currentTime + delay + 0.2);
+      });
+    } catch {}
+  }
+
+  // tick every 20s, fire once per minute per alarm
+  let lastFiredKey = '';
+  function tickAlarm() {
+    if (!alarmState.enabled) return;
+    const now = new Date();
+    const hh = String(now.getHours()).padStart(2,'0');
+    const mm = String(now.getMinutes()).padStart(2,'0');
+    const cur = hh + ':' + mm;
+    const dayKey = now.toISOString().slice(0,10);
+    alarmState.items.forEach((a, i) => {
+      if (!a.on || a.time !== cur) return;
+      const fireKey = dayKey + '#' + i + '#' + cur;
+      if (lastFiredKey === fireKey) return;
+      lastFiredKey = fireKey;
+      ringBell();
+      showNotif('⏰ 打卡提醒', a.label || '该打卡了');
+    });
+  }
+  setInterval(tickAlarm, 20000);
 
   buildMonthPicker();
   renderAll();
