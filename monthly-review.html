@@ -261,9 +261,39 @@
     line-height: 1.6;
   }
   .alarm-row {
-    display: flex; align-items: center; gap: 8px;
+    display: flex; flex-wrap: wrap; align-items: center; gap: 8px;
     padding: 10px 0; border-bottom: 1px solid var(--border);
   }
+  .alarm-row .main-line {
+    display: flex; align-items: center; gap: 8px;
+    width: 100%;
+  }
+  .alarm-row .repeat-line {
+    width: 100%; display: flex; flex-wrap: wrap; gap: 4px;
+    padding-left: 2px;
+  }
+  .chip {
+    font-size: 12px; padding: 3px 10px;
+    border: 1px solid var(--border); border-radius: 999px;
+    background: #fff; color: var(--muted);
+    cursor: pointer; user-select: none;
+    transition: all 0.15s;
+  }
+  .chip:hover { border-color: var(--mint-deep); }
+  .chip.active { background: var(--mint-deep); color: #fff; border-color: var(--mint-deep); }
+  .day-grid {
+    width: 100%; display: grid;
+    grid-template-columns: repeat(8, 1fr);
+    gap: 3px; margin-top: 4px;
+    padding: 6px; background: #f9fafb; border-radius: 6px;
+  }
+  .day-cell {
+    text-align: center; font-size: 11px;
+    padding: 4px 0; border-radius: 4px;
+    background: #fff; border: 1px solid var(--border);
+    cursor: pointer; user-select: none;
+  }
+  .day-cell.active { background: var(--mint-deep); color: #fff; border-color: var(--mint-deep); }
   .alarm-row:last-child { border-bottom: none; }
   .alarm-row input[type=time] {
     font: inherit; font-size: 18px; padding: 6px 10px;
@@ -976,13 +1006,35 @@
       list.innerHTML = '<div style="color:#9ca3af;text-align:center;padding:20px;font-size:13px">暂无提醒，点击下方“添加提醒”</div>';
     } else {
       alarmState.items.forEach((a, i) => {
+        a.repeat = a.repeat || 'daily';
+        a.days = a.days || [];
         const row = document.createElement('div');
         row.className = 'alarm-row' + (a.on ? ' on' : '');
+        const modes = [
+          {k:'daily', t:'每日'},
+          {k:'weekday', t:'工作日'},
+          {k:'weekend', t:'周末'},
+          {k:'custom', t:'自定义'}
+        ];
+        const chips = modes.map(m => `<span class="chip ${a.repeat===m.k?'active':''}" data-i="${i}" data-f="repeat" data-v="${m.k}">${m.t}</span>`).join('');
+        let grid = '';
+        if (a.repeat === 'custom') {
+          let cells = '';
+          for (let d = 1; d <= 31; d++) {
+            const on = a.days.includes(d) ? ' active' : '';
+            cells += `<div class="day-cell${on}" data-i="${i}" data-f="day" data-v="${d}">${d}</div>`;
+          }
+          grid = `<div class="day-grid">${cells}</div>`;
+        }
         row.innerHTML = `
-          <input type="time" value="${a.time}" data-i="${i}" data-f="time"/>
-          <input type="text" value="${esc(a.label||'')}" placeholder="备注" data-i="${i}" data-f="label"/>
-          <div class="switch" data-i="${i}" data-f="toggle"></div>
-          <button class="row-del" data-i="${i}" data-f="del" title="删除">×</button>
+          <div class="main-line">
+            <input type="time" value="${a.time}" data-i="${i}" data-f="time"/>
+            <input type="text" value="${esc(a.label||'')}" placeholder="备注" data-i="${i}" data-f="label"/>
+            <div class="switch" data-i="${i}" data-f="toggle"></div>
+            <button class="row-del" data-i="${i}" data-f="del" title="删除">×</button>
+          </div>
+          <div class="repeat-line">${chips}</div>
+          ${grid}
         `;
         list.appendChild(row);
       });
@@ -1010,7 +1062,7 @@
 
   document.getElementById('addAlarmBtn').onclick = () => {
     if (alarmState.items.length >= 5) { toast('最多 5 个提醒'); return; }
-    alarmState.items.push({ time: '22:00', label: '去打卡～', on: true });
+    alarmState.items.push({ time: '22:00', label: '去打卡～', on: true, repeat: 'daily', days: [] });
     saveAlarms(); renderAlarms();
     requestNotifPermission();
   };
@@ -1026,11 +1078,23 @@
   document.getElementById('alarmList').addEventListener('click', e => {
     const i = +e.target.dataset.i; const f = e.target.dataset.f;
     if (!Number.isInteger(i)) return;
+    const a = alarmState.items[i];
     if (f === 'toggle') {
-      alarmState.items[i].on = !alarmState.items[i].on;
+      a.on = !a.on;
       saveAlarms(); renderAlarms();
     } else if (f === 'del') {
       alarmState.items.splice(i, 1);
+      saveAlarms(); renderAlarms();
+    } else if (f === 'repeat') {
+      a.repeat = e.target.dataset.v;
+      if (a.repeat === 'custom' && (!a.days || !a.days.length)) a.days = [];
+      saveAlarms(); renderAlarms();
+    } else if (f === 'day') {
+      const d = +e.target.dataset.v;
+      a.days = a.days || [];
+      const idx = a.days.indexOf(d);
+      if (idx >= 0) a.days.splice(idx, 1); else a.days.push(d);
+      a.days.sort((x,y)=>x-y);
       saveAlarms(); renderAlarms();
     }
   });
@@ -1071,6 +1135,17 @@
     } catch {}
   }
 
+  function shouldFireToday(a, now) {
+    const mode = a.repeat || 'daily';
+    const w = now.getDay(); // 0=Sun
+    const d = now.getDate();
+    if (mode === 'daily') return true;
+    if (mode === 'weekday') return w >= 1 && w <= 5;
+    if (mode === 'weekend') return w === 0 || w === 6;
+    if (mode === 'custom') return Array.isArray(a.days) && a.days.includes(d);
+    return true;
+  }
+
   // tick every 20s, fire once per minute per alarm
   let lastFiredKey = '';
   function tickAlarm() {
@@ -1082,6 +1157,7 @@
     const dayKey = now.toISOString().slice(0,10);
     alarmState.items.forEach((a, i) => {
       if (!a.on || a.time !== cur) return;
+      if (!shouldFireToday(a, now)) return;
       const fireKey = dayKey + '#' + i + '#' + cur;
       if (lastFiredKey === fireKey) return;
       lastFiredKey = fireKey;
