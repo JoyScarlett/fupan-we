@@ -1,0 +1,671 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+<title>双轨执行系统</title>
+<style>
+  :root {
+    --bg: #000000;
+    --card: #111111;
+    --border: #222222;
+    --text: #e8e8e8;
+    --muted: #6b6b6b;
+    --accent: #00FFC6;
+    --warn: #FF5700;
+  }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { margin: 0; padding: 0; background: var(--bg); color: var(--text); }
+  body {
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif;
+    font-weight: 300;
+    min-height: 100vh;
+    letter-spacing: 0.01em;
+    padding-bottom: 140px;
+  }
+  header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 20px 24px;
+    border-bottom: 1px solid var(--border);
+    position: sticky; top: 0; background: rgba(0,0,0,0.85);
+    backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
+    z-index: 10;
+  }
+  header h1 {
+    font-size: 14px;
+    font-weight: 400;
+    margin: 0;
+    color: var(--muted);
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+  }
+  header h1 span { color: var(--accent); }
+  .export-btn {
+    background: transparent;
+    border: 1px solid var(--border);
+    color: var(--muted);
+    padding: 6px 14px;
+    border-radius: 6px;
+    font-size: 12px;
+    cursor: pointer;
+    font-family: inherit;
+    transition: all 0.2s ease;
+  }
+  .export-btn:hover { color: var(--accent); border-color: var(--accent); }
+
+  main {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+    padding: 24px;
+    max-width: 1200px;
+    margin: 0 auto;
+  }
+  .track {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 24px;
+    min-height: 420px;
+    display: flex; flex-direction: column;
+  }
+  .track-title {
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--muted);
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    margin: 0 0 4px 0;
+  }
+  .track-sub {
+    font-size: 22px;
+    font-weight: 300;
+    margin: 0 0 24px 0;
+    color: var(--text);
+  }
+
+  /* Left: tasks */
+  .task {
+    display: flex; align-items: center;
+    padding: 14px 0;
+    border-bottom: 1px solid var(--border);
+    cursor: pointer;
+    user-select: none;
+    transition: opacity 0.2s;
+  }
+  .task:last-child { border-bottom: none; }
+  .checkbox {
+    width: 20px; height: 20px;
+    border: 1.5px solid #444;
+    border-radius: 5px;
+    margin-right: 14px;
+    display: flex; align-items: center; justify-content: center;
+    flex-shrink: 0;
+    transition: all 0.2s ease;
+  }
+  .checkbox::after {
+    content: '';
+    width: 10px; height: 10px;
+    background: var(--accent);
+    border-radius: 2px;
+    transform: scale(0);
+    transition: transform 0.25s cubic-bezier(0.34, 1.56, 0.64, 1);
+  }
+  .task.done .checkbox { border-color: var(--accent); }
+  .task.done .checkbox::after { transform: scale(1); }
+  .task-text { font-size: 16px; flex: 1; }
+  .task-tag {
+    font-size: 11px;
+    color: var(--muted);
+    border: 1px solid var(--border);
+    padding: 2px 8px;
+    border-radius: 4px;
+    margin-left: 8px;
+  }
+  .task.done .task-text { text-decoration: line-through; color: var(--muted); }
+  .task-del {
+    opacity: 0; margin-left: 8px;
+    color: var(--muted); background: transparent; border: none;
+    cursor: pointer; font-size: 18px; padding: 0 6px;
+    transition: opacity 0.2s, color 0.2s;
+    font-family: inherit;
+  }
+  .task:hover .task-del { opacity: 1; }
+  .task-del:hover { color: var(--warn); }
+
+  /* Add task row */
+  .add-row {
+    display: flex; gap: 8px;
+    margin-top: 16px;
+    padding-top: 16px;
+    border-top: 1px dashed var(--border);
+  }
+  .add-input {
+    flex: 1;
+    background: #0a0a0a;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    color: var(--text);
+    padding: 10px 12px;
+    font-family: inherit;
+    font-size: 14px;
+    outline: none;
+    transition: border-color 0.2s;
+  }
+  .add-input:focus { border-color: var(--accent); }
+  .add-btn {
+    background: transparent;
+    border: 1px solid var(--accent);
+    color: var(--accent);
+    padding: 0 16px;
+    border-radius: 6px;
+    cursor: pointer;
+    font-family: inherit;
+    font-size: 14px;
+    transition: all 0.2s;
+  }
+  .add-btn:hover { background: var(--accent); color: #000; }
+  .add-btn:disabled { opacity: 0.4; cursor: not-allowed; border-color: var(--border); color: var(--muted); }
+
+  /* Right: AI cycle */
+  .day-tabs {
+    display: flex; gap: 8px; margin-bottom: 20px;
+  }
+  .day-tab {
+    flex: 1;
+    padding: 10px;
+    text-align: center;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    font-size: 12px;
+    color: var(--muted);
+    cursor: pointer;
+    transition: all 0.2s;
+  }
+  .day-tab.active {
+    border-color: var(--accent);
+    color: var(--accent);
+    background: rgba(0,255,198,0.05);
+  }
+  .day-content {
+    flex: 1;
+    opacity: 1;
+    transition: opacity 0.35s ease;
+  }
+  .day-content.fading { opacity: 0; }
+  .day-content h3 { font-weight: 400; font-size: 18px; margin: 0 0 12px; }
+  .day-content p { color: var(--muted); font-size: 14px; line-height: 1.7; }
+  .topic-list { display: flex; flex-direction: column; gap: 10px; margin-top: 12px; }
+  .topic {
+    border: 1px solid var(--border);
+    padding: 14px;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: all 0.2s;
+  }
+  .topic:hover { border-color: var(--accent); transform: translateX(2px); }
+  .topic strong { color: var(--accent); font-weight: 500; }
+  .prompt-box {
+    background: #0a0a0a;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 14px;
+    font-family: 'SF Mono', Consolas, monospace;
+    font-size: 13px;
+    color: #c0c0c0;
+    line-height: 1.6;
+    margin-top: 12px;
+    white-space: pre-wrap;
+  }
+  .copy-btn {
+    margin-top: 10px;
+    background: transparent;
+    border: 1px solid var(--accent);
+    color: var(--accent);
+    padding: 8px 16px;
+    border-radius: 6px;
+    cursor: pointer;
+    font-family: inherit;
+    font-size: 13px;
+  }
+  .publish-btn {
+    width: 100%;
+    margin-top: 20px;
+    padding: 28px;
+    background: var(--accent);
+    color: #000;
+    border: none;
+    border-radius: 12px;
+    font-size: 22px;
+    font-weight: 500;
+    cursor: pointer;
+    letter-spacing: 0.05em;
+    transition: transform 0.15s, box-shadow 0.2s;
+    font-family: inherit;
+  }
+  .publish-btn:hover { box-shadow: 0 0 30px rgba(0,255,198,0.4); }
+  .publish-btn:active { transform: scale(0.98); }
+  .publish-btn.published { background: #1a1a1a; color: var(--accent); border: 1px solid var(--accent); }
+
+  /* Progress ring */
+  .progress-wrap {
+    display: flex; align-items: center; gap: 16px;
+    margin-top: 24px; padding-top: 20px;
+    border-top: 1px solid var(--border);
+  }
+  .ring { position: relative; width: 64px; height: 64px; flex-shrink: 0; }
+  .ring svg { transform: rotate(-90deg); }
+  .ring circle { fill: none; stroke-width: 5; }
+  .ring .bg { stroke: var(--border); }
+  .ring .fg { stroke: var(--accent); stroke-linecap: round; transition: stroke-dashoffset 0.6s ease; }
+  .ring-label {
+    position: absolute; inset: 0;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 14px; color: var(--accent); font-weight: 500;
+  }
+  .progress-text { font-size: 12px; color: var(--muted); }
+  .progress-text strong { color: var(--text); display: block; font-weight: 400; font-size: 14px; margin-bottom: 2px; }
+
+  /* Bottom emergency */
+  .emergency {
+    position: fixed; left: 0; right: 0; bottom: 0;
+    padding: 16px 24px;
+    background: rgba(10,10,10,0.6);
+    backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px);
+    border-top: 1px solid var(--border);
+    z-index: 9;
+  }
+  .emergency-btn {
+    width: 100%;
+    padding: 18px;
+    background: rgba(255,87,0,0.08);
+    border: 1px solid rgba(255,87,0,0.4);
+    color: var(--warn);
+    font-size: 16px;
+    font-weight: 400;
+    border-radius: 12px;
+    cursor: pointer;
+    backdrop-filter: blur(10px);
+    transition: all 0.25s;
+    font-family: inherit;
+    letter-spacing: 0.02em;
+  }
+  .emergency-btn:hover { background: rgba(255,87,0,0.18); }
+  .emergency-btn.active {
+    background: var(--warn); color: #000; font-weight: 500;
+    border-color: var(--warn);
+  }
+
+  /* Modal */
+  .modal-mask {
+    position: fixed; inset: 0;
+    background: rgba(0,0,0,0.7);
+    backdrop-filter: blur(8px);
+    display: none;
+    align-items: center; justify-content: center;
+    z-index: 100;
+    padding: 20px;
+  }
+  .modal-mask.show { display: flex; }
+  .modal {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    padding: 28px;
+    max-width: 440px; width: 100%;
+    animation: pop 0.25s ease;
+  }
+  @keyframes pop {
+    from { opacity: 0; transform: scale(0.95); }
+    to { opacity: 1; transform: scale(1); }
+  }
+  .modal h3 { margin-top: 0; font-weight: 400; }
+  .modal-close {
+    margin-top: 16px; width: 100%;
+    background: transparent; color: var(--muted);
+    border: 1px solid var(--border); padding: 10px;
+    border-radius: 8px; cursor: pointer; font-family: inherit;
+  }
+
+  .toast {
+    position: fixed; top: 80px; left: 50%; transform: translateX(-50%);
+    background: var(--card); border: 1px solid var(--accent);
+    color: var(--accent); padding: 10px 20px; border-radius: 8px;
+    font-size: 13px; z-index: 200; opacity: 0; transition: opacity 0.3s;
+    pointer-events: none;
+  }
+  .toast.show { opacity: 1; }
+
+  .hidden-by-saver { display: none !important; }
+  .saver-mode .complex-only { display: none !important; }
+  .saver-tasks { display: none; }
+  .saver-mode .saver-tasks { display: block; }
+
+  /* Mobile */
+  @media (max-width: 720px) {
+    main { grid-template-columns: 1fr; padding: 16px; gap: 16px; }
+    .track { padding: 20px; min-height: auto; }
+    .track-sub { font-size: 20px; }
+    .task-text { font-size: 17px; }
+    .checkbox { width: 24px; height: 24px; }
+    .checkbox::after { width: 12px; height: 12px; }
+    header { padding: 16px; }
+    .publish-btn { font-size: 20px; padding: 24px; }
+    .emergency { padding: 12px 16px; }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>双轨执行系统 · <span>DUAL TRACK</span></h1>
+  <button class="export-btn" id="exportBtn">导出数据</button>
+</header>
+
+<main id="mainArea">
+  <!-- LEFT TRACK -->
+  <section class="track">
+    <p class="track-title">📡 流量发布</p>
+    <h2 class="track-sub">Daily Traffic</h2>
+
+    <div class="complex-only" id="leftTasks"></div>
+
+    <div class="complex-only add-row">
+      <input class="add-input" id="addInput" placeholder="添加新任务，回车确认" maxlength="40" />
+      <button class="add-btn" id="addBtn">＋ 添加</button>
+    </div>
+
+    <div class="saver-tasks" id="leftSaver">
+      <div class="task" data-id="saver_post"><div class="checkbox"></div><span class="task-text">发 1 条资料</span></div>
+    </div>
+  </section>
+
+  <!-- RIGHT TRACK -->
+  <section class="track">
+    <p class="track-title">🤖 AI 复利</p>
+    <h2 class="track-sub">AI Assets</h2>
+
+    <div class="complex-only">
+      <div class="day-tabs">
+        <div class="day-tab" data-day="1">Day 1 · 选题</div>
+        <div class="day-tab" data-day="2">Day 2 · 生成</div>
+        <div class="day-tab" data-day="3">Day 3 · 发布</div>
+      </div>
+      <div class="day-content" id="dayContent"></div>
+
+      <div class="progress-wrap">
+        <div class="ring">
+          <svg width="64" height="64">
+            <circle class="bg" cx="32" cy="32" r="27"></circle>
+            <circle class="fg" cx="32" cy="32" r="27" id="ringFg"
+              stroke-dasharray="169.6" stroke-dashoffset="169.6"></circle>
+          </svg>
+          <div class="ring-label" id="ringLabel">0%</div>
+        </div>
+        <div class="progress-text">
+          <strong>本周完成率</strong>
+          <span id="progressDesc">坚持就是胜利</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="saver-tasks">
+      <div class="task" data-id="saver_chat"><div class="checkbox"></div><span class="task-text">聊 1 个人</span></div>
+      <div class="task" data-id="saver_word"><div class="checkbox"></div><span class="task-text">写 1 个词</span></div>
+    </div>
+  </section>
+</main>
+
+<div class="emergency">
+  <button class="emergency-btn" id="emergencyBtn">⚠️ 今日能量不足？开启 1+1+1 保底模式</button>
+</div>
+
+<!-- Topic modal -->
+<div class="modal-mask" id="topicModal">
+  <div class="modal">
+    <h3>Day 1 · 选题方向</h3>
+    <p style="color: var(--muted); font-size: 13px; margin-bottom: 16px;">挑一个方向，今天就把它搞定。</p>
+    <div class="topic-list">
+      <div class="topic"><strong>① 工具种草</strong><br><span style="color:var(--muted);font-size:13px">分享一个让你效率翻倍的 AI 工具</span></div>
+      <div class="topic"><strong>② 避坑指南</strong><br><span style="color:var(--muted);font-size:13px">总结一次失败教训，帮别人省时间</span></div>
+      <div class="topic"><strong>③ 变现案例</strong><br><span style="color:var(--muted);font-size:13px">拆解一个真实的 AI 副业赚钱路径</span></div>
+    </div>
+    <button class="modal-close" id="closeTopic">关闭</button>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+(function(){
+  const STORAGE_KEY = 'dual_track_v1';
+  const defaultState = {
+    tasks: { t1: false, t2: false, t3: false, saver_post: false, saver_chat: false, saver_word: false },
+    day: 1,
+    saverMode: false,
+    weekDone: 0, // count of completed AI cycles this week
+    publishedDay3: false,
+    lastDate: new Date().toISOString().slice(0,10),
+    customTasks: [] // [{id, text, tag}]
+  };
+  const baseTaskDefs = [
+    { id: 't1', text: '发第 1 条资料', tag: '必做', fixed: true },
+    { id: 't2', text: '发第 2 条资料', tag: '必做', fixed: true },
+    { id: 't3', text: '发第 3 条资料', tag: '选做', fixed: true }
+  ];
+
+  let state = load();
+
+  function load() {
+    try {
+      const raw = localStorage.getItem(STORAGE_KEY);
+      if (!raw) return structuredClone(defaultState);
+      return Object.assign(structuredClone(defaultState), JSON.parse(raw));
+    } catch { return structuredClone(defaultState); }
+  }
+  function save() { localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); }
+
+  function toast(msg) {
+    const el = document.getElementById('toast');
+    el.textContent = msg;
+    el.classList.add('show');
+    clearTimeout(el._t);
+    el._t = setTimeout(()=>el.classList.remove('show'), 1800);
+  }
+
+  function escapeHtml(s) {
+    return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  }
+
+  // Render left tasks
+  function renderLeft() {
+    const wrap = document.getElementById('leftTasks');
+    wrap.innerHTML = '';
+    const all = [...baseTaskDefs, ...state.customTasks];
+    all.forEach(t => {
+      const done = !!state.tasks[t.id];
+      const div = document.createElement('div');
+      div.className = 'task' + (done ? ' done' : '');
+      div.dataset.id = t.id;
+      const delBtn = t.fixed ? '' : `<button class="task-del" data-del="${t.id}" title="删除">×</button>`;
+      div.innerHTML = `<div class="checkbox"></div><span class="task-text">${escapeHtml(t.text)}</span><span class="task-tag">${escapeHtml(t.tag)}</span>${delBtn}`;
+      wrap.appendChild(div);
+    });
+    // saver tasks
+    document.querySelectorAll('.saver-tasks .task').forEach(el => {
+      const id = el.dataset.id;
+      el.classList.toggle('done', !!state.tasks[id]);
+    });
+  }
+
+  function bindTasks() {
+    document.addEventListener('click', e => {
+      const delBtn = e.target.closest('[data-del]');
+      if (delBtn) {
+        e.stopPropagation();
+        const id = delBtn.dataset.del;
+        state.customTasks = state.customTasks.filter(x => x.id !== id);
+        delete state.tasks[id];
+        save();
+        renderLeft();
+        return;
+      }
+      const t = e.target.closest('.task');
+      if (!t) return;
+      const id = t.dataset.id;
+      state.tasks[id] = !state.tasks[id];
+      t.classList.toggle('done', state.tasks[id]);
+      save();
+    });
+  }
+
+  function bindAdd() {
+    const input = document.getElementById('addInput');
+    const btn = document.getElementById('addBtn');
+    const submit = () => {
+      const text = input.value.trim();
+      if (!text) return;
+      const id = 'c_' + Date.now().toString(36);
+      state.customTasks.push({ id, text, tag: '自定义' });
+      state.tasks[id] = false;
+      input.value = '';
+      save();
+      renderLeft();
+      toast('已添加 ✓');
+    };
+    btn.addEventListener('click', submit);
+    input.addEventListener('keydown', e => {
+      if (e.key === 'Enter') submit();
+    });
+  }
+
+  // Day cycle
+  function renderDay() {
+    document.querySelectorAll('.day-tab').forEach(el => {
+      el.classList.toggle('active', +el.dataset.day === state.day);
+    });
+    const c = document.getElementById('dayContent');
+    c.classList.add('fading');
+    setTimeout(() => {
+      if (state.day === 1) {
+        c.innerHTML = `
+          <h3>选定今日的内容方向</h3>
+          <p>不需要完美，只需要选一个。点击下方按钮查看 3 个备选方向。</p>
+          <button class="copy-btn" id="openTopic" style="margin-top:14px">查看选题方向 →</button>
+        `;
+        document.getElementById('openTopic').onclick = () => {
+          document.getElementById('topicModal').classList.add('show');
+        };
+      } else if (state.day === 2) {
+        const prompt = `你是一个专业的内容创作者。请根据以下选题，生成一篇适合小红书/公众号的短文（300字以内）：\n\n选题：[在此粘贴你昨天选定的方向]\n\n要求：\n1. 开头要有钩子\n2. 中间给 3 个具体例子\n3. 结尾留互动问题`;
+        c.innerHTML = `
+          <h3>复制这段提示词给元宝 / DeepSeek / GPT</h3>
+          <p>把生成的内容存进草稿，明天直接发布。</p>
+          <div class="prompt-box" id="promptBox">${prompt}</div>
+          <button class="copy-btn" id="copyPrompt">复制提示词</button>
+        `;
+        document.getElementById('copyPrompt').onclick = () => {
+          navigator.clipboard.writeText(prompt).then(()=>toast('已复制 ✓'));
+        };
+      } else {
+        const published = state.publishedDay3;
+        c.innerHTML = `
+          <h3>今天，把它发出去</h3>
+          <p>不发布，等于 0。一键完成本周期。</p>
+          <button class="publish-btn ${published?'published':''}" id="pubBtn">
+            ${published ? '✓ 已发布 · 进入下个周期' : '🚀 发布'}
+          </button>
+        `;
+        document.getElementById('pubBtn').onclick = () => {
+          if (!state.publishedDay3) {
+            state.publishedDay3 = true;
+            state.weekDone = Math.min(state.weekDone + 1, 7);
+            save();
+            renderDay();
+            renderRing();
+            toast('🎉 本周期完成！');
+          } else {
+            // start next cycle
+            state.day = 1;
+            state.publishedDay3 = false;
+            save();
+            renderDay();
+          }
+        };
+      }
+      c.classList.remove('fading');
+    }, 200);
+  }
+
+  function bindDayTabs() {
+    document.querySelectorAll('.day-tab').forEach(el => {
+      el.addEventListener('click', () => {
+        const d = +el.dataset.day;
+        if (d === state.day) return;
+        state.day = d;
+        save();
+        renderDay();
+      });
+    });
+  }
+
+  // Ring
+  function renderRing() {
+    const total = 7;
+    const pct = Math.min(state.weekDone / total, 1);
+    const C = 2 * Math.PI * 27;
+    document.getElementById('ringFg').setAttribute('stroke-dashoffset', C * (1 - pct));
+    document.getElementById('ringLabel').textContent = Math.round(pct*100) + '%';
+    document.getElementById('progressDesc').textContent =
+      pct >= 1 ? '满分一周 🎯' : pct >= 0.5 ? '已过半，继续' : '坚持就是胜利';
+  }
+
+  // Topic modal
+  document.getElementById('closeTopic').onclick = () => {
+    document.getElementById('topicModal').classList.remove('show');
+  };
+  document.getElementById('topicModal').addEventListener('click', e => {
+    if (e.target.id === 'topicModal') e.currentTarget.classList.remove('show');
+  });
+
+  // Emergency mode
+  function applySaver() {
+    document.body.classList.toggle('saver-mode', state.saverMode);
+    const btn = document.getElementById('emergencyBtn');
+    btn.classList.toggle('active', state.saverMode);
+    btn.textContent = state.saverMode
+      ? '✓ 保底模式已开启 · 点击恢复正常'
+      : '⚠️ 今日能量不足？开启 1+1+1 保底模式';
+  }
+  document.getElementById('emergencyBtn').onclick = () => {
+    state.saverMode = !state.saverMode;
+    save();
+    applySaver();
+  };
+
+  // Export
+  document.getElementById('exportBtn').onclick = () => {
+    const blob = new Blob([JSON.stringify(state, null, 2)], {type:'application/json'});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `dual-track-${new Date().toISOString().slice(0,10)}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+    toast('已导出 ✓');
+  };
+
+  // Init
+  renderLeft();
+  bindTasks();
+  bindAdd();
+  renderDay();
+  bindDayTabs();
+  renderRing();
+  applySaver();
+})();
+</script>
+</body>
+</html>
