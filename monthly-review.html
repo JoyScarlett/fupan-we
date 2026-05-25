@@ -1081,16 +1081,29 @@
   });
 
   // ---------- export / import / reset ----------
-  document.getElementById('exportBtn').onclick = () => {
-    const blob = new Blob([JSON.stringify({ ym: currentYm, data: state }, null, 2)], {type:'application/json'});
+  const BACKUP_KEY = 'monthly_review_last_backup';
+  function exportAll() {
+    // dump all months + alarms
+    const all = { exportedAt: Date.now(), months: {}, alarms: null };
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i);
+      if (k && k.startsWith(PREFIX)) {
+        try { all.months[k.slice(PREFIX.length)] = JSON.parse(localStorage.getItem(k)); } catch {}
+      }
+    }
+    try { all.alarms = JSON.parse(localStorage.getItem(ALARM_KEY)); } catch {}
+    const blob = new Blob([JSON.stringify(all, null, 2)], {type:'application/json'});
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `monthly-review-${currentYm}.json`;
+    const stamp = new Date().toISOString().slice(0,10);
+    a.download = `monthly-review-backup-${stamp}.json`;
     a.click();
     URL.revokeObjectURL(url);
-    toast('已导出 ✓');
-  };
+    localStorage.setItem(BACKUP_KEY, String(Date.now()));
+    toast('已备份 ✓');
+  }
+  document.getElementById('exportBtn').onclick = exportAll;
   document.getElementById('importBtn').onclick = () => document.getElementById('importFile').click();
   document.getElementById('importFile').addEventListener('change', e => {
     const f = e.target.files[0]; if (!f) return;
@@ -1376,8 +1389,30 @@
   }
   setInterval(tickAlarm, 20000);
 
+  // ---------- persistence guard ----------
+  // 1) request persistent storage so browser is less likely to evict
+  if (navigator.storage && navigator.storage.persist) {
+    navigator.storage.persist().catch(()=>{});
+  }
+  // 2) backup reminder: if no backup in 30 days, show a one-time banner
+  function maybeRemindBackup() {
+    const last = +localStorage.getItem(BACKUP_KEY) || 0;
+    const days = (Date.now() - last) / 86400000;
+    if (last && days < 30) return;
+    if (last === 0 && Object.keys(state).length === 0) return;
+    setTimeout(() => {
+      const msg = last
+        ? `上次备份已 ${Math.floor(days)} 天前，点击“导出”保存一份避免数据丢失`
+        : '建议定期点“导出”备份一下，防止手机清理后丢失数据';
+      const ok = confirm(msg + '\n\n现在导出吗？');
+      if (ok) exportAll();
+      else localStorage.setItem(BACKUP_KEY, String(Date.now() - 25*86400000)); // 推迟 5 天再提
+    }, 1500);
+  }
+
   buildMonthPicker();
   renderAll();
+  maybeRemindBackup();
 })();
 </script>
 </body>
