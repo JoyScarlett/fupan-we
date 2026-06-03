@@ -98,10 +98,28 @@
   tr.add-row td:hover { color: var(--mint-deep); }
 
   /* Habit grid */
-  .habit-table { min-width: 800px; }
+  .habit-scroll {
+    overflow-x: auto;
+    max-width: 100%;
+    position: relative;
+  }
+  .habit-table { min-width: 800px; border-collapse: separate; border-spacing: 0; }
   .habit-table th, .habit-table td { padding: 4px 2px; font-size: 12px; min-width: 22px; }
   .habit-table th.day { background: var(--mint); color: #fff; }
-  .habit-table td.name { text-align: left; padding-left: 10px; min-width: 90px; background: var(--mint-soft); font-weight: 500; }
+  .habit-table th.sticky-project,
+  .habit-table td.name {
+    position: sticky;
+    left: 0;
+    z-index: 4;
+    min-width: 110px;
+    width: 110px;
+    box-shadow: 1px 0 0 var(--border);
+  }
+  .habit-table th.sticky-project {
+    z-index: 6;
+    background: var(--mint-soft);
+  }
+  .habit-table td.name { text-align: left; padding-left: 10px; background: var(--mint-soft); font-weight: 500; }
   .habit-cell {
     cursor: pointer; user-select: none;
     transition: background 0.15s;
@@ -475,7 +493,7 @@
           <input placeholder="新增虚拟打卡项，如：发资料" data-add="habit" />
           <button class="btn primary" data-add-btn="habit">+ 添加</button>
         </div>
-        <div style="overflow-x: auto;">
+        <div class="habit-scroll">
           <table class="habit-table" id="habitTable_habit"></table>
         </div>
       </div>
@@ -486,7 +504,7 @@
           <input placeholder="新增 Ai 打卡项，如：选题/生成/发布" data-add="sport" />
           <button class="btn primary" data-add-btn="sport">+ 添加</button>
         </div>
-        <div style="overflow-x: auto;">
+        <div class="habit-scroll">
           <table class="habit-table" id="habitTable_sport"></table>
         </div>
       </div>
@@ -497,7 +515,7 @@
           <input placeholder="新增客户记录项，如：私聊1人" data-add="study" />
           <button class="btn primary" data-add-btn="study">+ 添加</button>
         </div>
-        <div style="overflow-x: auto;">
+        <div class="habit-scroll">
           <table class="habit-table" id="habitTable_study"></table>
         </div>
       </div>
@@ -995,7 +1013,7 @@
     const tb = document.getElementById('habitTable_' + section);
     const items = state.habits[section] || [];
 
-    let head = '<thead><tr><th>项目</th>';
+    let head = '<thead><tr><th class="sticky-project">项目</th>';
     for (let d = 1; d <= dim; d++) {
       const w = dayOfWeek(currentYm, d);
       head += `<th class="day">${d}<br/><span style="font-weight:400;font-size:10px">${WEEK_CN[w]}</span></th>`;
